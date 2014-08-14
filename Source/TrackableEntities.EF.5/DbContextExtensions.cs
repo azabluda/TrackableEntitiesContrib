@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Collections;
 using System.Data.Entity;
@@ -36,7 +37,7 @@ namespace TrackableEntities.EF5
         public static void ApplyChanges(this DbContext context, ITrackable item)
         {
             // Recursively set entity state for DbContext entry
-            ApplyChanges(context, item, null, new ObjectVisitationHelper(), null);
+            ApplyChanges(context, item, null, null, null);
         }
 
         /// <summary>
@@ -48,15 +49,21 @@ namespace TrackableEntities.EF5
         {
             // Apply changes to collection of items
             foreach (var item in items)
-                ApplyChanges(context, item, null, new ObjectVisitationHelper(), null);
+                ApplyChanges(context, item, null, null, null);
         }
 
         private static void ApplyChanges(this DbContext context,
-            ITrackable item, ITrackable parent, ObjectVisitationHelper visitationHelper,
+            ITrackable item, ITrackable parent, IImmutableSet<object> visitationHelper,
             string propertyName, TrackingState? state = null)
         {
+            // Create visitationHelper for the first time
+            if (visitationHelper == null)
+            {
+                visitationHelper = ImmutableHashSet<object>.Empty.WithComparer(new ObjectVisitationHelper());
+            }
+
             // Prevent endless recursion
-            if (visitationHelper.IsVisited(item)) return;
+            if (visitationHelper.Contains(item)) return;
 
             // Check for null args
             if (context == null)
@@ -95,7 +102,7 @@ namespace TrackableEntities.EF5
                 }
 
                 // Set state for child collections
-                context.ApplyChangesOnProperties(item, visitationHelper.With(item));
+                context.ApplyChangesOnProperties(item, visitationHelper.Add(item));
                 return;
             }   
 
@@ -124,7 +131,7 @@ namespace TrackableEntities.EF5
                 && (state == null || state == TrackingState.Added))
             {
                 context.Entry(item).State = EntityState.Added;
-                context.ApplyChangesOnProperties(item, visitationHelper.With(item));
+                context.ApplyChangesOnProperties(item, visitationHelper.Add(item));
                 return;
             }
 
@@ -143,7 +150,7 @@ namespace TrackableEntities.EF5
                 || state == TrackingState.Modified)
             {
                 // Set added state for reference or child properties
-                context.ApplyChangesOnProperties(item, visitationHelper.With(item), TrackingState.Added);
+                context.ApplyChangesOnProperties(item, visitationHelper.Add(item), TrackingState.Added);
 
                 // Set modified properties
                 if (item.TrackingState == TrackingState.Modified
@@ -163,9 +170,9 @@ namespace TrackableEntities.EF5
                 }
 
                 // Set other state for reference or child properties
-                context.ApplyChangesOnProperties(item, visitationHelper.With(item), TrackingState.Unchanged);
-                context.ApplyChangesOnProperties(item, visitationHelper.With(item), TrackingState.Modified);
-                context.ApplyChangesOnProperties(item, visitationHelper.With(item), TrackingState.Deleted);
+                context.ApplyChangesOnProperties(item, visitationHelper.Add(item), TrackingState.Unchanged);
+                context.ApplyChangesOnProperties(item, visitationHelper.Add(item), TrackingState.Modified);
+                context.ApplyChangesOnProperties(item, visitationHelper.Add(item), TrackingState.Deleted);
             }
         }
 
@@ -446,7 +453,7 @@ namespace TrackableEntities.EF5
         #region ApplyChanges Helpers
 
         private static void ApplyChangesOnProperties(this DbContext context,
-            ITrackable item, ObjectVisitationHelper visitationHelper, TrackingState? state = null)
+            ITrackable item, IImmutableSet<object> visitationHelper, TrackingState? state = null)
         {
             // Recursively apply changes
             foreach (var prop in item.GetType().GetProperties())
@@ -473,13 +480,12 @@ namespace TrackableEntities.EF5
 
         private static void SetChanges(this DbContext context,
             ITrackable item, EntityState state,
-            ObjectVisitationHelper visitationHelper,
+            IImmutableSet<object> visitationHelper,
             ITrackable parent = null, string propertyName = null)
         {
             // Prevent endless recursion
-            if (visitationHelper.IsVisited(item)) return;
-
-            visitationHelper = visitationHelper.With(item);
+            if (visitationHelper.Contains(item)) return;
+            visitationHelper = visitationHelper.Add(item);
 
             // Set state for child collections
             foreach (var prop in item.GetType().GetProperties())
