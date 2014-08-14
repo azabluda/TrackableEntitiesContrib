@@ -322,8 +322,7 @@ namespace TrackableEntities.EF5
             foreach (var item in items)
             {
                 // Avoid endless recursion
-                if (visitationHelper.IsVisited(item)) continue;
-                visitationHelper = visitationHelper.With(item);
+                if (!visitationHelper.TryVisit(item)) continue;
 
                 bool loadAllRelated = loadAll 
                     || item.TrackingState == TrackingState.Added
@@ -377,8 +376,7 @@ namespace TrackableEntities.EF5
             foreach (var item in items)
             {
                 // Avoid endless recursion
-                if (visitationHelper.IsVisited(item)) continue;
-                visitationHelper = visitationHelper.With(item);
+                if (!visitationHelper.TryVisit(item)) continue;
 
                 bool loadAllRelated = loadAll
                     || item.TrackingState == TrackingState.Added
@@ -782,8 +780,7 @@ namespace TrackableEntities.EF5
 
         private static ObjectVisitationHelper CreateVisitationHelperWithIdMatching(DbContext dbContext)
         {
-            var visitationHelper = new ObjectVisitationHelper();
-            visitationHelper.EqualityComparer = new IdMatcher() { DbContext = dbContext };
+            var visitationHelper = new ObjectVisitationHelper(new IdMatcher() { DbContext = dbContext });
             return visitationHelper;
         }
         #endregion
